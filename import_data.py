@@ -1,253 +1,181 @@
 import psycopg2
+import csv
 import re
 from datetime import datetime
-import csv
+import os
+from dotenv import load_dotenv
+
+load_dotenv()
 
 
 def connect_db():
     return psycopg2.connect(
         dbname="joy_of_painting",
         user="jacobleon",
-        password="",
+        password=os.getenv("DB_PASSWORD"),
         host="localhost",
     )
 
 
-def parse_episode_data(line):
-    pattern = r'"([^"]+)"\s*\((\w+\s+\d+,\s+\d+)\)'
-    match = re.match(pattern, line)
+def parse_episode_line(line):
+    # Format: "Title" (Date)
+    match = re.match(r'"([^"]+)" \(([^)]+)\)', line.strip())
     if match:
-        title = match.group(1)
-        date_str = match.group(2)
-        date = datetime.strptime(date_str, "%B %d, %Y")
+        title, date_str = match.groups()
+        date = datetime.strptime(date_str, "%B %d, %Y").date()
         return title, date
     return None, None
 
 
-def import_episodes(cursor, episode_data, color_data):
-    youtube_urls = {}
-    reader = csv.DictReader(color_data.strip().split("\n"))
-    for row in reader:
-        season = f"S{str(int(row['season'])).zfill(2)}"
-        episode = f"E{str(int(row['episode'])).zfill(2)}"
-        youtube_urls[f"{season}{episode}"] = row["youtube_src"]
+def import_episodes(cur):
+    with open("episode_data.txt", "r") as f:
+        episode_number = 1
+        season = 1
+        for line in f:
+            title, air_date = parse_episode_line(line)
+            if title and air_date:
+                cur.execute(
+                    """
+                    INSERT INTO Episodes (season, episode, title, air_date)
+                    VALUES (%s, %s, %s, %s)
+                    ON CONFLICT (season, episode) DO UPDATE 
+                    SET title = EXCLUDED.title,
+                        air_date = EXCLUDED.air_date
+                    RETURNING episode_id
+                """,
+                    (f"S{season:02d}", f"E{episode_number:02d}", title, air_date),
+                )
 
-    lines = episode_data.split("\n")
-    for i, line in enumerate(lines, 1):
-        if not line.strip():
-            continue
+                if episode_number % 13 == 0:  # Increment season every 13 episodes
+                    season += 1
+                episode_number += 1
 
-        title, air_date = parse_episode_data(line)
-        if not title:
-            continue
 
-        season = f"S{str(((i-1) // 13) + 1).zfill(2)}"
-        episode = f"E{str(((i-1) % 13) + 1).zfill(2)}"
+def import_subjects(cur):
+    with open("subject_data.csv", "r") as f:
+        reader = csv.DictReader(f)
+        for row in reader:
+            episode_code = row["EPISODE"]
+            season, episode = episode_code.split("E")
 
-        youtube_url = youtube_urls.get(f"{season}{episode}")
-
-        cursor.execute(
-            """
-            INSERT INTO Episodes (season, episode, title, air_date, youtube_src)
-            VALUES (%s, %s, %s, %s, %s)
+            # Get episode_id
+            cur.execute(
+                """
+                SELECT episode_id FROM Episodes 
+                WHERE season = %s AND episode = %s
             """,
-            (season, episode, title, air_date, youtube_url),
-        )
+                (season, f"E{int(episode):02d}"),
+            )
 
+            episode_result = cur.fetchone()
+            if not episode_result:
+                continue
 
-def import_subjects(cursor, subject_data):
-    subjects = set()
-    lines = subject_data.strip().split("\n")[1:]
-    for line in lines:
-        cols = line.split(",")
-        for i, val in enumerate(cols[3:], 3):
-            if val == "1":
-                subject = cols[i].strip('"')
-                if subject:
-                    subjects.add(subject)
+            episode_id = episode_result[0]
 
-    for subject in subjects:
-        category = categorize_subject(subject)
-        cursor.execute(
-            """
-            INSERT INTO Subjects (name, category)
-            VALUES (%s, %s)
-            ON CONFLICT (name) DO NOTHING
-        """,
-            (subject, category),
-        )
-
-
-def categorize_subject(subject):
-    nature = {"TREE", "BUSH", "FLOWERS", "GRASS"}
-    water = {"LAKE", "OCEAN", "RIVER", "WATERFALL", "WAVES"}
-    structure = {"CABIN", "BARN", "MILL", "LIGHTHOUSE", "BRIDGE"}
-    landscape = {"MOUNTAIN", "CLIFF", "BEACH", "HILLS"}
-    weather = {"SNOW", "FOG", "CLOUDS"}
-
-    if subject in nature:
-        return "NATURE"
-    elif subject in water:
-        return "WATER"
-    elif subject in structure:
-        return "STRUCTURE"
-    elif subject in landscape:
-        return "LANDSCAPE"
-    elif subject in weather:
-        return "WEATHER"
-    return "OTHER"
-
-
-def link_episode_subjects(cursor, subject_data):
-    cursor.execute("SELECT subject_id, name FROM Subjects")
-    subject_ids = {name: id for id, name in cursor.fetchall()}
-
-    cursor.execute("SELECT episode_id, season, episode FROM Episodes")
-    episode_ids = {(season, episode): id for id, season, episode in cursor.fetchall()}
-
-    lines = subject_data.strip().split("\n")[1:]
-    for line in lines:
-        cols = line.split(",")
-        season_ep = cols[0].strip('"')
-        season = f"S{season_ep[1:3]}"
-        episode = f"E{season_ep[4:6]}"
-
-        episode_id = episode_ids.get((season, episode))
-        if not episode_id:
-            continue
-
-        for i, val in enumerate(cols[3:], 3):
-            if val == "1":
-                subject = cols[i].strip('"')
-                subject_id = subject_ids.get(subject)
-                if subject_id:
-                    cursor.execute(
-                        """
-                        INSERT INTO EpisodeSubjects (episode_id, subject_id)
-                        VALUES (%s, %s)
-                        ON CONFLICT DO NOTHING
-                    """,
-                        (episode_id, subject_id),
+            # Check each subject column
+            subject_columns = [
+                "MOUNTAIN",
+                "TREE",
+                "LAKE",
+                "CABIN",
+                "SNOW",
+                "CLOUDS",
+                "WATERFALL",
+            ]
+            for subject in subject_columns:
+                if subject in row and row[subject] == "1":
+                    # Get subject_id
+                    cur.execute(
+                        "SELECT subject_id FROM Subjects WHERE name = %s", (subject,)
                     )
+                    subject_result = cur.fetchone()
+                    if subject_result:
+                        subject_id = subject_result[0]
+                        # Insert relationship
+                        cur.execute(
+                            """
+                            INSERT INTO EpisodeSubjects (episode_id, subject_id)
+                            VALUES (%s, %s)
+                            ON CONFLICT DO NOTHING
+                        """,
+                            (episode_id, subject_id),
+                        )
 
 
-def import_colors(cursor, color_data):
-    lines = color_data.strip().split("\n")[1:]
-    for line in lines:
-        if not line.strip():
-            continue
+def import_colors(cur):
+    with open("color_data.csv", "r") as f:
+        reader = csv.DictReader(f)
+        for row in reader:
+            if not row.get("colors"):
+                continue
 
-        cols = line.split(",")
+            season = int(row["season"])
+            episode = int(row["episode"])
 
-        try:
-            season = f"S{str(int(cols[4])).zfill(2)}"
-            episode = f"E{str(int(cols[5])).zfill(2)}"
-        except (IndexError, ValueError):
-            print(f"Skipping line due to invalid season/episode format")
-            continue
+            # Get episode_id
+            cur.execute(
+                """
+                SELECT episode_id FROM Episodes 
+                WHERE season = %s AND episode = %s
+            """,
+                (f"S{season:02d}", f"E{episode:02d}"),
+            )
 
-        cursor.execute(
-            """
-            SELECT episode_id FROM Episodes 
-            WHERE season = %s AND episode = %s
-        """,
-            (season, episode),
-        )
-        result = cursor.fetchone()
-        if not result:
-            print(f"No episode found for {season} {episode}")
-            continue
+            episode_result = cur.fetchone()
+            if not episode_result:
+                continue
 
-        episode_id = result[0]
+            episode_id = episode_result[0]
 
-        color_columns = [
-            "Black_Gesso",
-            "Bright_Red",
-            "Burnt_Umber",
-            "Cadmium_Yellow",
-            "Dark_Sienna",
-            "Indian_Red",
-            "Indian_Yellow",
-            "Liquid_Black",
-            "Liquid_Clear",
-            "Midnight_Black",
-            "Phthalo_Blue",
-            "Phthalo_Green",
-            "Prussian_Blue",
-            "Sap_Green",
-            "Titanium_White",
-            "Van_Dyke_Brown",
-            "Yellow_Ochre",
-            "Alizarin_Crimson",
-        ]
-
-        color_mapping = {
-            "Black_Gesso": "Black Gesso",
-            "Bright_Red": "Bright Red",
-            "Burnt_Umber": "Burnt Umber",
-            "Cadmium_Yellow": "Cadmium Yellow",
-            "Dark_Sienna": "Dark Sienna",
-            "Indian_Yellow": "Indian Yellow",
-            "Phthalo_Blue": "Phthalo Blue",
-            "Prussian_Blue": "Prussian Blue",
-            "Sap_Green": "Sap Green",
-            "Titanium_White": "Titanium White",
-            "Van_Dyke_Brown": "Van Dyke Brown",
-            "Alizarin_Crimson": "Alizarin Crimson",
-        }
-
-        for i, color_col in enumerate(color_columns, 10):
+            # Parse colors list from string
             try:
-                if i < len(cols) and cols[i] == "1" and color_col in color_mapping:
-                    cursor.execute(
-                        """
-                        SELECT color_id FROM Colors 
-                        WHERE name = %s
-                    """,
-                        (color_mapping[color_col],),
+                colors = eval(row["colors"])  # Be careful with eval!
+                for color_name in colors:
+                    color_name = color_name.strip()
+                    cur.execute(
+                        "SELECT color_id FROM Colors WHERE name = %s", (color_name,)
                     )
-                    color_result = cursor.fetchone()
+                    color_result = cur.fetchone()
                     if color_result:
-                        cursor.execute(
+                        color_id = color_result[0]
+                        cur.execute(
                             """
                             INSERT INTO EpisodeColors (episode_id, color_id)
                             VALUES (%s, %s)
                             ON CONFLICT DO NOTHING
                         """,
-                            (episode_id, color_result[0]),
+                            (episode_id, color_id),
                         )
-            except Exception as e:
-                print(f"Error processing color {color_col}: {e}")
-                continue
+            except:
+                print(
+                    f"Error processing colors for episode S{season:02d}E{episode:02d}"
+                )
 
 
 def main():
     conn = connect_db()
-    cursor = conn.cursor()
+    cur = conn.cursor()
 
     try:
-        with open("episode_data.txt", "r") as f:
-            episode_data = f.read()
+        print("Importing episodes...")
+        import_episodes(cur)
 
-        with open("subject_data.csv", "r") as f:
-            subject_data = f.read()
+        print("Importing subject relationships...")
+        import_subjects(cur)
 
-        with open("color_data.csv", "r") as f:
-            color_data = f.read()
-
-        import_episodes(cursor, episode_data, color_data)
-        import_subjects(cursor, subject_data)
-        link_episode_subjects(cursor, subject_data)
-        import_colors(cursor, color_data)
+        print("Importing color relationships...")
+        import_colors(cur)
 
         conn.commit()
+        print("Import completed successfully!")
 
     except Exception as e:
-        print(f"Error occurred: {e}")
         conn.rollback()
+        print(f"Error during import: {str(e)}")
 
     finally:
-        cursor.close()
+        cur.close()
         conn.close()
 
 
