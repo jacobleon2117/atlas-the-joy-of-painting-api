@@ -18,7 +18,6 @@ def connect_db():
 
 
 def parse_episode_line(line):
-    # Format: "Title" (Date)
     match = re.match(r'"([^"]+)" \(([^)]+)\)', line.strip())
     if match:
         title, date_str = match.groups()
@@ -46,7 +45,7 @@ def import_episodes(cur):
                     (f"S{season:02d}", f"E{episode_number:02d}", title, air_date),
                 )
 
-                if episode_number % 13 == 0:  # Increment season every 13 episodes
+                if episode_number % 13 == 0:
                     season += 1
                 episode_number += 1
 
@@ -58,7 +57,6 @@ def import_subjects(cur):
             episode_code = row["EPISODE"]
             season, episode = episode_code.split("E")
 
-            # Get episode_id
             cur.execute(
                 """
                 SELECT episode_id FROM Episodes 
@@ -73,7 +71,6 @@ def import_subjects(cur):
 
             episode_id = episode_result[0]
 
-            # Check each subject column
             subject_columns = [
                 "MOUNTAIN",
                 "TREE",
@@ -85,14 +82,12 @@ def import_subjects(cur):
             ]
             for subject in subject_columns:
                 if subject in row and row[subject] == "1":
-                    # Get subject_id
                     cur.execute(
                         "SELECT subject_id FROM Subjects WHERE name = %s", (subject,)
                     )
                     subject_result = cur.fetchone()
                     if subject_result:
                         subject_id = subject_result[0]
-                        # Insert relationship
                         cur.execute(
                             """
                             INSERT INTO EpisodeSubjects (episode_id, subject_id)
@@ -113,7 +108,6 @@ def import_colors(cur):
             season = int(row["season"])
             episode = int(row["episode"])
 
-            # Get episode_id
             cur.execute(
                 """
                 SELECT episode_id FROM Episodes 
@@ -128,9 +122,8 @@ def import_colors(cur):
 
             episode_id = episode_result[0]
 
-            # Parse colors list from string
             try:
-                colors = eval(row["colors"])  # Be careful with eval!
+                colors = eval(row["colors"])
                 for color_name in colors:
                     color_name = color_name.strip()
                     cur.execute(

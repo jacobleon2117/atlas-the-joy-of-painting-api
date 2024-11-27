@@ -2,25 +2,27 @@
 
 ## Description
 
-A Flask-based API that allows users to filter through Bob Ross's "The Joy of Painting" episodes based on colors used, subjects painted, and broadcast months.
+A Flask-based API and React frontend that lets users explore Bob Ross's "The Joy of Painting" episodes. Filter through episodes based on colors used, subjects painted, and broadcast months. View episode details including YouTube links and color palettes.
 
-## Table of Contents
+## Features
 
-- [Installation](#installation)
-- [Usage](#usage)
-- [API Endpoints](#api-endpoints)
-- [Database Schema](#database-schema)
-- [Contributing](#contributing)
+- Filter episodes by colors, subjects, and months
+- Support for AND/OR logic in filters
+- Color visualization with hex codes
+- Subject categorization (Landscape, Water, Nature, etc.)
+- Episode details including air dates and YouTube links
+- Interactive React frontend
+- RESTful API endpoints
+- PostgreSQL database with optimized queries
 
-## Installation
-
-### Prerequisites
+## Prerequisites
 
 - Python 3.x
-- PostgreSQL
+- PostgreSQL 14+
+- Node.js and npm (for frontend)
 - pip (Python package manager)
 
-### Setup Steps
+## Installation
 
 1. **Clone the repository**
 
@@ -29,14 +31,14 @@ git clone [repository-url]
 cd atlas-the-joy-of-painting-api
 ```
 
-2. **Install dependencies**
+2. **Install Python dependencies**
 
 ```bash
-pip install Flask psycopg2-binary python-dotenv Flask-CORS
+pip install flask psycopg2-binary flask-cors python-dotenv pandas numpy
 ```
 
-3. **Environment Configuration**
-   Create a `.env` file in the root directory:
+3. **Configure environment**
+   Create `.env` file:
 
 ```bash
 DB_NAME=joy_of_painting
@@ -45,37 +47,56 @@ DB_PASSWORD=your_password
 DB_HOST=localhost
 ```
 
-4. **Database Setup**
+4. **Database setup**
 
 ```bash
+# Start PostgreSQL service
+brew services start postgresql@14
+
 # Create database
-psql -U postgres -c "CREATE DATABASE joy_of_painting;"
+psql postgres -c "CREATE DATABASE joy_of_painting;"
 
-# Import schema
-psql -d joy_of_painting -f schema.sql
-
-# Import data
+# Import schema and initial data
+psql joy_of_painting < schema.sql
 python3 import_data.py
 ```
+
+## Data Files
+
+- `episode_data.txt`: Episode titles and air dates
+- `subject_data.csv`: Episode-subject mappings
+- `color_data.csv`: Episode-color relationships and YouTube links
 
 ## Usage
 
 1. **Start the server**
 
 ```bash
-python3 api.py
+python3 app.py
 ```
 
-Server will run on `http://localhost:5000`
+Server runs at `http://localhost:5000`
 
-2. **Example API Calls**
+2. **Access the web interface**
+
+```
+http://localhost:5000/ui
+```
+
+3. **Example API calls**
 
 ```bash
-# Get all episodes using specific colors
+# Get all episodes
+curl http://localhost:5000/api/episodes
+
+# Filter by color
 curl http://localhost:5000/api/episodes?color=Bright%20Red
 
-# Get episodes with multiple filters
-curl http://localhost:5000/api/episodes?color=Bright%20Red&subject=TREE&month=1
+# Multiple filters
+curl http://localhost:5000/api/episodes?subject=TREE&color=Bright%20Red&month=1
+
+# Get available filters
+curl http://localhost:5000/api/filters
 ```
 
 ## API Endpoints
@@ -86,12 +107,12 @@ curl http://localhost:5000/api/episodes?color=Bright%20Red&subject=TREE&month=1
 
 Parameters:
 
-- `color`: Filter by colors used (can specify multiple)
-- `subject`: Filter by subjects painted (can specify multiple)
-- `month`: Filter by broadcast month (can specify multiple)
+- `color`: Filter by colors (multiple allowed)
+- `subject`: Filter by subjects (multiple allowed)
+- `month`: Filter by broadcast month (multiple allowed)
 - `filter_type`: 'AND' or 'OR' (default: 'AND')
 
-Example Response:
+Response:
 
 ```json
 {
@@ -103,27 +124,35 @@ Example Response:
       "season": "S01",
       "episode": "E01",
       "air_date": "1983-01-11",
+      "youtube_src": "https://youtube.com/...",
       "subjects": ["TREE", "MOUNTAIN"],
       "colors": ["Bright Red", "Titanium White"]
     }
-  ]
+  ],
+  "debug": {
+    "filters_received": {
+      "colors": ["Bright Red"],
+      "subjects": ["TREE"],
+      "months": [1]
+    }
+  }
 }
 ```
 
-### Get Available Filters
+### Get Filters
 
 `GET /api/filters`
 
-Returns all available:
+Returns available:
 
 - Colors with hex codes
 - Subjects with categories
 - Months with episodes
+- Example usage
 
 ## Database Schema
 
 ```sql
--- Episodes table
 CREATE TABLE Episodes (
     episode_id SERIAL PRIMARY KEY,
     season VARCHAR(10) NOT NULL,
@@ -134,21 +163,18 @@ CREATE TABLE Episodes (
     UNIQUE (season, episode)
 );
 
--- Colors table
 CREATE TABLE Colors (
     color_id SERIAL PRIMARY KEY,
     name VARCHAR(50) NOT NULL UNIQUE,
     hex_code CHAR(7) NULL
 );
 
--- Subjects table
 CREATE TABLE Subjects (
     subject_id SERIAL PRIMARY KEY,
     name VARCHAR(50) NOT NULL UNIQUE,
     category VARCHAR(50) NOT NULL
 );
 
--- Relationship tables
 CREATE TABLE EpisodeSubjects (
     episode_id INTEGER REFERENCES Episodes(episode_id),
     subject_id INTEGER REFERENCES Subjects(subject_id),
@@ -162,20 +188,56 @@ CREATE TABLE EpisodeColors (
 );
 ```
 
-## Contributing
+## Testing
 
-1. Fork the repository
-2. Create your feature branch (`git checkout -b feature/YourFeature`)
-3. Commit your changes (`git commit -m 'Add some feature'`)
-4. Push to the branch (`git push origin feature/YourFeature`)
-5. Open a Pull Request
+Run the test suite:
+
+```bash
+python3 test_setup.py
+```
+
+Tests verify:
+
+- Data file presence and format
+- Database table population
+- Table relationships
+- Query functionality
+- Data integrity
+
+## Development
+
+### Frontend Features
+
+- Interactive color and subject filters
+- Month selection dropdown
+- Episode cards with thumbnails
+- YouTube video links
+- Color palette visualization
+- Responsive design
+
+### API Features
+
+- RESTful endpoints
+- Query parameter validation
+- Error handling
+- Debug information
+- CORS support
 
 ## Security Notes
 
-- Database credentials should be stored in environment variables
-- The `.env` file should never be committed to version control
-- This is a development server and should not be used in production without proper security measures
+- Store credentials in environment variables
+- Never commit `.env` file
+- Development server only - not production-ready
+- Use proper security measures for deployment
+
+## Contributing
+
+1. Fork the repository
+2. Create feature branch (`git checkout -b feature/YourFeature`)
+3. Commit changes (`git commit -m 'Add feature'`)
+4. Push to branch (`git push origin feature/YourFeature`)
+5. Open Pull Request
 
 ## License
 
-This project is licensed under the MIT License - see the LICENSE file for details.
+MIT License - see LICENSE file for details
