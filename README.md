@@ -2,24 +2,21 @@
 
 ## Description
 
-A Flask-based API and React frontend that lets users explore Bob Ross's "The Joy of Painting" episodes. Filter through episodes based on colors used, subjects painted, and broadcast months. View episode details including YouTube links and color palettes.
+A Flask-based API providing programmatic access to Bob Ross's "The Joy of Painting" episodes. Filter through episodes based on colors used, subjects painted, and broadcast months. Access episode details including YouTube links and color palettes.
 
 ## Features
 
+- RESTful API endpoints
 - Filter episodes by colors, subjects, and months
 - Support for AND/OR logic in filters
-- Color visualization with hex codes
+- Color information with hex codes
 - Subject categorization (Landscape, Water, Nature, etc.)
-- Episode details including air dates and YouTube links
-- Interactive React frontend
-- RESTful API endpoints
 - PostgreSQL database with optimized queries
 
 ## Prerequisites
 
 - Python 3.x
 - PostgreSQL 14+
-- Node.js and npm (for frontend)
 - pip (Python package manager)
 
 ## Installation
@@ -31,7 +28,7 @@ git clone [repository-url]
 cd atlas-the-joy-of-painting-api
 ```
 
-2. **Install Python dependencies**
+2. **Install dependencies**
 
 ```bash
 pip install flask psycopg2-binary flask-cors python-dotenv pandas numpy
@@ -77,13 +74,7 @@ python3 app.py
 
 Server runs at `http://localhost:5000`
 
-2. **Access the web interface**
-
-```
-http://localhost:5000/ui
-```
-
-3. **Example API calls**
+2. **Example API calls**
 
 ```bash
 # Get all episodes
@@ -204,24 +195,28 @@ Tests verify:
 - Query functionality
 - Data integrity
 
-## Development
+## Future Development
 
-### Frontend Features
+1. **Frontend Interface**
 
-- Interactive color and subject filters
-- Month selection dropdown
-- Episode cards with thumbnails
-- YouTube video links
-- Color palette visualization
-- Responsive design
+   - Interactive color and subject filters
+   - Episode gallery with thumbnails
+   - Color palette visualization
+   - Responsive design
 
-### API Features
+2. **API Enhancements**
 
-- RESTful endpoints
-- Query parameter validation
-- Error handling
-- Debug information
-- CORS support
+   - Advanced search capabilities
+   - Statistical analysis endpoints
+   - Batch operations
+   - Rate limiting
+   - Authentication
+
+3. **Data Expansion**
+   - Paint technique tracking
+   - Episode transcripts
+   - Painting difficulty ratings
+   - User annotations
 
 ## Security Notes
 
