@@ -24,7 +24,7 @@ A Flask-based API providing programmatic access to Bob Ross's "The Joy of Painti
 1. **Clone the repository**
 
 ```bash
-git clone [repository-url]
+git clone https://github.com/jacobleon2117/atlas-the-joy-of-painting-api
 cd atlas-the-joy-of-painting-api
 ```
 
